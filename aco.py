@@ -1,16 +1,34 @@
+import sys
+import os
 import random
 import numpy as np
 from fonctions import extraction, calcul_makespan
 import optuna
+import logging
+import warnings
+logging.getLogger('optuna').setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
-N = 4
-data = np.array(extraction("20J-5M.txt")[N][5])
+if len(sys.argv) < 3:
+    print("Utilisation : python aco.py nom_fichier.txt indice_instance(0-9)")
+    sys.exit(1)
+
+nom_fichier = sys.argv[1]
+try:
+    N = int(sys.argv[2])
+    if N < 0 or N > 9:
+        raise ValueError
+except ValueError:
+    print("L’indice d’instance doit être un entier entre 0 et 9.")
+    sys.exit(1)
+chemin_fichier = os.path.join("data", nom_fichier)
+
+data = np.array(extraction(chemin_fichier)[N][5])
 num_machines, num_jobs = data.shape
-borne = np.array(extraction("20J-5M.txt")[N][3])
+borne = np.array(extraction(chemin_fichier)[N][4])
 print(data)
 
 pheromones = np.ones((num_jobs, num_jobs))
-
 heuristics = np.zeros((num_jobs, num_jobs))
 for i in range(num_jobs):
     for j in range(num_jobs):
@@ -59,7 +77,6 @@ def maj_pheromones(ant_solutions, best_makespan, evaporation_rate, Q):
         solution_makespan = calcul_makespan(solution, data, num_machines, num_jobs)
         if solution_makespan == best_makespan:
             pheromone_deposit = Q / solution_makespan
-            #print(f"Meilleur makespan trouvé : {solution_makespan}, dépôt de phéromone maximal : {pheromone_deposit}")
         else:
             pheromone_deposit = Q / (solution_makespan + 1e-10)
         for i in range(len(solution) - 1):
@@ -94,10 +111,9 @@ def ACO(alpha, beta, evaporation_rate, num_ants, iterations, Q):
             no_improve_counter += 1
 
         maj_pheromones(ant_solutions, best_makespan, evaporation_rate, Q)
-        #print(f"Itération {iteration + 1} : {best_makespan}")
 
         if no_improve_counter >= stagnation_window:
-            print(f"--| Arrêt anticipé à l'itération {iteration + 1} (aucune amélioration depuis {stagnation_window} itérations)")
+            print(f"\033[91m✤  Arrêt anticipé à l'itération {iteration + 1} (aucune amélioration depuis {stagnation_window} itérations)\033[0m")
             break
 
     return best_solution, best_makespan
@@ -119,13 +135,14 @@ study = optuna.create_study(direction='minimize')
 study.optimize(objective, n_trials=6, n_jobs=6) 
 
 best_params = study.best_params
-print("\n-----> Meilleure combinaison trouvée :")
+print(f"\n\033[95m❖  Meilleure combinaison trouvée :\033[0m")
+longest_key = max(len(k) for k in best_params)
 for key, val in best_params.items():
-    print(f"{key} = {val}")
+    print(f"\033[95m{key.ljust(longest_key)} : {val:.4f}\033[0m")
 
 pheromones = np.ones((num_jobs, num_jobs)) 
 best_solution, best_makespan = ACO(**best_params, iterations=80)
 
-print("Meilleure permutation des jobs:", [job + 1 for job in best_solution])
-print("Makespan de la meilleure solution:", best_makespan)
-print("RDP = ", (best_makespan - borne) / borne * 100, "% et borne ", borne)
+print("❖  Meilleure permutation des jobs:", [job + 1 for job in best_solution])
+print("❖  Makespan de la meilleure solution:", best_makespan)
+print("❖  RDP = ", (best_makespan - borne) / borne * 100, "% et borne ", borne)
